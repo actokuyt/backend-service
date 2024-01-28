@@ -17,6 +17,11 @@ const octokit = new Octokit({
   auth: process.env.GITHUB_API_TOKEN,
 });
 
+// Test route to ensure server is active
+app.get("/", async (req, res) => {
+  res.send("server is active")
+})
+
 // Route for fetching GitHub user profile
 app.post("/github-profiler", async (req, res) => {
   console.log(req.body);
