@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const axios = require("axios");
+const { Pool } = require("pg");
 const { Octokit } = require("octokit");
 require("dotenv").config();
 
@@ -17,12 +18,23 @@ const octokit = new Octokit({
   auth: process.env.GITHUB_API_TOKEN,
 });
 
+const pool = new Pool({
+  user: "acto",
+  host: "dpg-cmrl1pen7f5s738jqh6g-a.frankfurt-postgres.render.com",
+  database: "todo_app_b1u0",
+  password: "DNLatjmq6J5CEcXVmgvCB93Dj3X4yJXd",
+  port: 5432,
+  ssl: true,
+});
+
+pool.connect();
+
 // Test route to ensure server is active
 app.get("/", async (req, res) => {
   res.send("server is active")
 })
 
-// Route for fetching GitHub user profile
+// Routes for GitHub-profiler
 app.post("/github-profiler", async (req, res) => {
   console.log(req.body);
   const { user_name } = req.body;
@@ -75,6 +87,118 @@ app.post("/newsletter", async (req, res) => {
   } catch (error) {
     console.error("MailChimp API Error:", error.message);
     res.status(500).send({ error: "Internal Server Error" });
+  }
+});
+
+// Routes for todo-app-v2
+// Get all todos
+app.get("/todos", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM todos");
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching todos:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Add a new todo
+app.post("/todos", async (req, res) => {
+  const { text } = req.body;
+
+  if (!text) {
+    return res.status(400).json({ error: "Text is required for a todo." });
+  }
+
+  try {
+    const result = await pool.query(
+      "INSERT INTO todos (text) VALUES ($1) RETURNING *",
+      [text]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error adding todo:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Update todo route
+app.put("/todos/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ error: "Invalid todo ID." });
+  }
+
+  const newText = req.body.text;
+
+  try {
+    let result;
+
+    if (newText !== undefined) {
+      // Update the text of the todo
+      result = await pool.query(
+        "UPDATE todos SET text = $1 WHERE id = $2 RETURNING *",
+        [newText, id]
+      );
+    } else if (newText === undefined) {
+      //get requested todo
+      const requestedTodo = await pool.query(
+        "SELECT * FROM todos WHERE id = $1",
+        [id]
+      );
+
+      //get current state
+      currentState = requestedTodo.rows[0].completed;
+
+      const newState = !currentState;
+
+      //set new state in database
+      result = await pool.query(
+        "UPDATE todos SET completed = $1 WHERE id = $2 RETURNING *",
+        [newState, id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Todo not found." });
+      }
+    } else {
+      return res.status(400).json({ error: "Invalid request" });
+    }
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Todo not found" });
+    }
+
+    // Return the updated todo
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error updating todo:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Delete a todo
+app.delete("/todos/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+
+  if (isNaN(id)) {
+    return res.status(400).json({ error: "Invalid todo ID." });
+  }
+
+  try {
+    const result = await pool.query(
+      "DELETE FROM todos WHERE id = $1 RETURNING *",
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Todo not found." });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error deleting todo:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
