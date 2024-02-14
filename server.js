@@ -36,7 +36,6 @@ app.get("/", async (req, res) => {
 
 // Routes for GitHub-profiler
 app.post("/github-profiler", async (req, res) => {
-  console.log(req.body);
   const { user_name } = req.body;
 
   try {
